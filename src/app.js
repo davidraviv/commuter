@@ -5,6 +5,8 @@ var Vector2 = require('vector2');
 var Vibe = require('ui/vibe');
 var Settings = require('settings');
 
+var currentWindow = null;
+
 var parseFeed = function(data) {
   var items = [];
   var quantity = Settings.option('stations') || 4;
@@ -57,7 +59,7 @@ var parseLines = function(data) {
   return items;
 };
 
-displayText('Getting location...', false);
+currentWindow = displayText('Getting location...', currentWindow, false);
 
 var locationOptions = {
   enableHighAccuracy: true,
@@ -69,11 +71,11 @@ function locationSuccess(pos) {
   var crd = pos.coords;
   console.debug('Lat: ' + crd.latitude + 'Lon:' + crd.longitude + 'Accuracy: ' + crd.accuracy);
 // Text element to show position
-  displayText(
+  currentWindow = displayText(
     'lat: ' + crd.latitude + '\n' +
     'lon: ' + crd.longitude + '\n' +
     'accuracy: ' + crd.accuracy, 
-    false);
+    currentWindow, false);
   
   // now, that we have the location, get stations nearby
   console.info('getting list of stations nearby');
@@ -111,6 +113,7 @@ function locationSuccess(pos) {
     // Show the Menu
     resultsMenu.show();
     Vibe.vibrate('short');
+    currentWindow.hide();
   },
   function(err) {
     console.error('ERROR (' + err.code + '): ' + err.message);  
@@ -135,7 +138,7 @@ navigator.geolocation.getCurrentPosition(locationSuccess, error, locationOptions
 /**
 * Display a window with a text
 **/
-function displayText(text, isVibe) {
+function displayText(text, previousWindow, isVibe) {
   // Create splash window
   var splashWindow = new UI.Window();
   
@@ -154,11 +157,15 @@ function displayText(text, isVibe) {
   // Add to splashWindow and show
   splashWindow.add(textObj);
   splashWindow.show();
+  if (previousWindow) {
+    previousWindow.hide();
+  }
   
   // Vibrarte if asked to
   if (isVibe) {
     Vibe.vibrate('short');
   }
+  return splashWindow;
 }
 
 // TODO: I should translate all names synchronously
