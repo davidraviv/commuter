@@ -1,15 +1,12 @@
 var UI = require('ui');
-// var ajax = require('ajax');
 var Vector2 = require('vector2');
-// var Accel = require('ui/accel');
 var Vibe = require('ui/vibe');
 
-
 function display(text, isVibe) {
-  // Show splash screen while waiting for data
+  // Create splash window
   var splashWindow = new UI.Window();
   
-  // Text element to inform user
+  // Create text element
   var textObj = new UI.Text({
     position: new Vector2(0, 0),
     size: new Vector2(144, 168),
@@ -25,6 +22,7 @@ function display(text, isVibe) {
   splashWindow.add(textObj);
   splashWindow.show();
   
+  // Vibrarte if asked to
   if (isVibe) {
     Vibe.vibrate('short');
   }

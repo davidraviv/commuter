@@ -1,33 +1,63 @@
-//var UI = require('ui');
-// var ajax = require('ajax');
-//var Vector2 = require('vector2');
+var UI = require('ui');
+var ajax = require('ajax');
+var Vector2 = require('vector2');
 // var Accel = require('ui/accel');
-//var Vibe = require('ui/vibe');
-// var uiUtils = require('./uiUtils');
+var Vibe = require('ui/vibe');
+var Settings = require('settings');
 
-// var parseFeed = function(data, quantity) {
-//   var items = [];
-//   for(var i = 0; i < quantity; i++) {
-//     // Always upper case the description string
-//     var title = data.list[i].weather[0].main;
-//     title = title.charAt(0).toUpperCase() + title.substring(1);
+var parseFeed = function(data) {
+  var items = [];
+  var quantity = Settings.option('stations') || 4;
+  for(var i = 0; i < quantity; i++) {
+    // parse out the station name and id
+    var title = data.Payload[i].StationName;
+    var id = data.Payload[i].StationID;
+    
+    // translate the title to english
+    var titleEn = translate(title); //|| title;
+    
+    // Add to menu items array
+    items.push({
+      title: titleEn,
+      subtitle: id,
+      id: id
+    });
+  }
 
-//     // Get date/time substring
-//     var time = data.list[i].dt_txt;
-//     time = time.substring(time.indexOf('-') + 1, time.indexOf(':') + 3);
+  // Finally return whole array
+  return items;
+};
 
-//     // Add to menu items array
-//     items.push({
-//       title:title,
-//       subtitle:time
-//     });
-//   }
+var parseLines = function(data) {
+  var items = [];
+  var favouriteLines = Settings.option('lines') || ['1','40','51','68','240'];
+  
+  // make sure objects are valid and iterate over all bus lines
+  if (data.Payload && data.Payload.Lines) {
+    for(var i = 0; i < data.Payload.Lines.length; i++) {
+      // parse out the line number and time
+      if (favouriteLines.indexOf(data.Payload.Lines[i].LineSign) > -1) {
+        var title = data.Payload.Lines[i].LineSign + ' (' + data.Payload.Lines[i].EstimationTime + ' min)';
+        // Add to menu items array
+        items.push({
+          title: title
+        });
+      }
+    }
+  }
+  
+  // if no matches found
+  if(items.length === 0) {
+    items.push({
+      title: 'No lines available'
+    });
+  }
 
-//   // Finally return whole array
-//   return items;
-// };
+  // Finally return whole array
+  return items;
+};
 
-display('Getting location...', false);
+displayText('Getting location...', false);
 
 var locationOptions = {
   enableHighAccuracy: true,
@@ -39,26 +69,48 @@ function locationSuccess(pos) {
   var crd = pos.coords;
   console.debug('Lat: ' + crd.latitude + 'Lon:' + crd.longitude + 'Accuracy: ' + crd.accuracy);
 // Text element to show position
-  display(
+  displayText(
     'lat: ' + crd.latitude + '\n' +
     'lon: ' + crd.longitude + '\n' +
     'accuracy: ' + crd.accuracy, 
-    true);
+    false);
   
+  // now, that we have the location, get stations nearby
+  console.info('getting list of stations nearby');
   ajax(
   {
     url: 'http://mabat.mot.gov.il/AdalyaService.svc/StationsByGEOGet',
     type: 'json',
     method: 'post',
     data: {
-      "longitude":34.7913681,
-      "latitude":32.0701706,
+      "longitude": crd.longitude,
+      "latitude": crd.latitude,
       "isStationWithTrain":false,
       "lang":1037
     }
   },
   function(data) {
-    console.debug(JSON.stringify(data,null,2));
+//     console.debug(JSON.stringify(data,null,2));
+    console.info('Got a list of nearby stations');
+    
+    // Create an array of Menu items
+    var menuItems = parseFeed(data);
+    
+    // Construct Menu to show to user
+    var resultsMenu = new UI.Menu({
+      sections: [{
+        title: 'Nearby stations',
+        items: menuItems,
+        font:'GOTHIC_28_BOLD'
+      }]
+    });
+    
+    // Add an action for SELECT
+    resultsMenu.on('select', displayLinesInStation);
+    
+    // Show the Menu
+    resultsMenu.show();
+    Vibe.vibrate('short');
   },
   function(err) {
     console.error('ERROR (' + err.code + '): ' + err.message);  
@@ -67,89 +119,133 @@ function locationSuccess(pos) {
 
 function error(err) {
   console.warn('ERROR (' + err.code + '): ' + err.message);
-  display('ERROR: ' + err.message, false);
+  displayText('ERROR: ' + err.message, false);
 }
 
-console.debug('getting location');
+console.info('getting location');
 navigator.geolocation.getCurrentPosition(locationSuccess, error, locationOptions);
 
 
-// Make request to openweathermap.org
-// ajax(
-//   {
-//     url:'http://api.openweathermap.org/data/2.5/forecast?q=London',
-//     type:'json'
-//   },
-//   function(data) {
-//     // Create an array of Menu items
-//     var menuItems = parseFeed(data, 10);
 
-//     // Construct Menu to show to user
-//     var resultsMenu = new UI.Menu({
-//       sections: [{
-//         title: 'Current Forecast',
-//         items: menuItems
-//       }]
-//     });
+//========================================================
+// UTILS
+// Should move to a seperate file once supported by pebble
+//========================================================
 
-//     // Add an action for SELECT
-//   resultsMenu.on('select', function(e) {
-//   // Get that forecast
-//   var forecast = data.list[e.itemIndex];
+/**
+* Display a window with a text
+**/
+function displayText(text, isVibe) {
+  // Create splash window
+  var splashWindow = new UI.Window();
+  
+  // Create text element
+  var textObj = new UI.Text({
+    position: new Vector2(0, 0),
+    size: new Vector2(144, 168),
+    text:text,
+    font:'GOTHIC_28_BOLD',
+    color:'white',
+    textOverflow:'wrap',
+    textAlign:'left',
+    backgroundColor:'black'
+  });
+  
+  // Add to splashWindow and show
+  splashWindow.add(textObj);
+  splashWindow.show();
+  
+  // Vibrarte if asked to
+  if (isVibe) {
+    Vibe.vibrate('short');
+  }
+}
 
-//   // Assemble body string
-//   var content = data.list[e.itemIndex].weather[0].description;
+// TODO: I should translate all names synchronously
+function translate(text) {
+  console.debug('translating: ' + text);
+  var trans = null;
+  ajax(
+    {
+      url: 'https://www.googleapis.com/language/translate/v2?key=xxx&source=he&target=en&q='+text,
+      type: 'json',
+      async: false,
+      cache: true
+    },
+    function(data) {
+//       console.debug(JSON.stringify(data,null,2));
+      trans = data.data.translations[0].translatedText;
+    },
+    function(err) {
+      console.error('Error translating (' + err.code + '): ' + err.message);
+      return null;
+    });
+  console.debug('translate returns: ' + trans);
+  return trans;
+}
 
-//   // Capitalize first letter
-//   content = content.charAt(0).toUpperCase() + content.substring(1);
-
-//   // Add temperature, pressure etc
-//   content += '\nTemperature: ' + Math.round(forecast.main.temp - 273.15) + '°C' +
-//     '\nPressure: ' + Math.round(forecast.main.pressure) + ' mbar' +
-//     '\nWind: ' + Math.round(forecast.wind.speed) + ' mph, ' + 
-//     Math.round(forecast.wind.deg) + '°';
-
-//       // Create the Card for detailed view
-//       var detailCard = new UI.Card({
-//         title:'Details',
-//         subtitle:e.item.subtitle,
-//         body: content
-//       });
-//       detailCard.show();
-//     });
-
-//     // Show the Menu, hide the splash
-//     resultsMenu.show();
-//     splashWindow.hide();
+function displayLinesInStation(selectedItem) {
+  console.debug('selected item ' + selectedItem.item.id);
+  ajax(
+  {
+    url: 'http://mabat.mot.gov.il/AdalyaService.svc/StationLinesByIdGet',
+    type: 'json',
+    method: 'post',
+    cache: false,
+    data: {
+      "stationId": selectedItem.item.id,
+      "isSIRI": true,
+      "lang": 1037
+    }
+  },
+  function(data) {
+//     console.debug(JSON.stringify(data,null,2));
+    console.info('got available lines, going to parse feed');
     
-//     // Register for 'tap' events
-//     resultsMenu.on('accelTap', function(e) {
-//       // Make another request to openweathermap.org
-//       ajax(
-//         {
-//           url:'http://api.openweathermap.org/data/2.5/forecast?q=London',
-//           type:'json'
-//         },
-//         function(data) {
-//           // Create an array of Menu items
-//           var newItems = parseFeed(data, 10);
-          
-//           // Update the Menu's first section
-//           resultsMenu.items(0, newItems);
-          
-//           // Notify the user
-//           Vibe.vibrate('short');
-//         },
-//         function(error) {
-//           console.log('Download failed: ' + error);
-//         }
-//       );
-//     });
-//   },
-//   function(error) {
-//     console.log("Download failed: " + error);
-//   }
-// );
+    // Create an array of Menu items
+    var menuItems = parseLines(data);
+    
+    // Construct Menu to show to user
+    var resultsMenu = new UI.Menu({
+      sections: [{
+        title: 'Upcoming lines',
+        items: menuItems,
+        font:'GOTHIC_28_BOLD'
+      }]
+    });
+    
+    // Add an action for SELECT
+    resultsMenu.on('select', function(e){
+      console.debug('Selected bus item ' + e.selectedIndex);
+    });
+    
+    // Show the Menu
+    resultsMenu.show();
+  },
+  function(err) {
+    console.error('Error geting lines (' + err.code + '): ' + err.message);  
+  });
+}
 
-// Prepare the accelerometer
-// Accel.init();
+//==========================
+// STTINGS
+// Should move to a seperate file once supported by pebble
+//==========================
+// Set a configurable with the open callback
+Settings.config(
+  { url: 'http://www.example.com',
+    autoSave: true },
+  function(e) {
+    console.debug('opening configurable');
+
+    // Reset color to red before opening the webview
+    Settings.option('color', 'red');
+    Settings.option('stations', '4');
+    Settings.option('lines', ['1','40','51','68','240']);
+  },
+  function(e) {
+    console.debug('closed configurable');
+    var stations = Settings.option('stations');
+    console.debug('number of stations: ' + stations);
+  }
+);
