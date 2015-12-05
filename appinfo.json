@@ -29,15 +29,25 @@
                 "file": "fonts/UbuntuMono-Regular.ttf",
                 "name": "MONO_FONT_14",
                 "type": "font"
+            },
+            {
+                "file": "images/favorite_10x10.png",
+                "name": "IMAGES_FAVORITE_10X10_PNG",
+                "type": "png"
             }
         ]
     },
     "sdkVersion": "3",
     "shortName": "Commuter",
+    "targetPlatforms": [
+        "aplite",
+        "basalt"
+    ],
     "uuid": "6e6cfd45-deb0-46ff-acb5-091c41a3e80e",
     "versionCode": 1,
     "versionLabel": "1.0",
     "watchapp": {
+        "hiddenApp": false,
         "watchface": false
     }
 }

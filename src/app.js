@@ -5,18 +5,27 @@ var Vector2 = require('vector2');
 var Vibe = require('ui/vibe');
 var Settings = require('settings');
 
+var cache = Settings.data('stationCache') || {};
+var isCacheUpdated = false;
+console.info('----- Starting Commuter -----');
+console.info('Station cache: ' + JSON.stringify(cache,null,2));
+// Settings.option('stations','[]');
+console.info('Favorite stations: ' + (Settings.option('stations') ? JSON.stringify(Settings.option('stations')) : 'None'));
+console.info('Favorite lines: ' + (Settings.option('lines') ? JSON.stringify(Settings.option('lines')) : 'None'));
+console.info('-----------------------------');
+
 var currentWindow = null;
 
 var parseFeed = function(data) {
   var items = [];
-  var quantity = Settings.option('stations') || 4;
+  var quantity = 4; //Settings.option('stations') || 4;
   for(var i = 0; i < quantity; i++) {
     // parse out the station name and id
     var title = data.Payload[i].StationName;
     var id = data.Payload[i].StationID;
     
     // translate the title to english
-    var titleEn = translate(title); //|| title;
+    var titleEn = translate(id, title); //|| title;
     
     // Add to menu items array
     items.push({
@@ -26,35 +35,54 @@ var parseFeed = function(data) {
     });
   }
 
+  //TODO this should be done in the event of the app shutdown
+  if(isCacheUpdated) {
+    console.debug('saving cache');
+    Settings.data('stationCache', cache);
+  }
+  
+  // if no matches found
+  if(items.length === 0) {
+    items.push({
+      title: 'No stations available'
+    });
+  }
+
   // Finally return whole array
   return items;
 };
 
 var parseLines = function(data) {
-  var items = [];
-  var favouriteLines = Settings.option('lines') || ['1','40','51','68','240'];
-  
+  var favItems = [];
+  var restItems = [];
+  var favoriteLines = Settings.option('lines') ? JSON.parse(Settings.option('lines')) : []; // || ['1','40','51','68','240'];
+  console.log('favorite lines: ' + JSON.stringify(favoriteLines));
   // make sure objects are valid and iterate over all bus lines
   if (data.Payload && data.Payload.Lines) {
     for(var i = 0; i < data.Payload.Lines.length; i++) {
       // parse out the line number and time
-      if (favouriteLines.indexOf(data.Payload.Lines[i].LineSign) > -1) {
-        var title = data.Payload.Lines[i].LineSign + ' (' + data.Payload.Lines[i].EstimationTime + ' min)';
-        // Add to menu items array
-        items.push({
-          title: title
-        });
+      var item = {
+        id: data.Payload.Lines[i].LineSign,
+        title: data.Payload.Lines[i].LineSign + ' (' + data.Payload.Lines[i].EstimationTime + ' min)'
+      };
+      if (favoriteLines.indexOf(data.Payload.Lines[i].LineSign) > -1) {
+        item.icon = 'images/favorite_10x10.png';
+        favItems.push(item);
+      } else {
+        restItems.push(item);
       }
     }
   }
-  
+  // join rest of items to favorite items (favorites first)
+  var items = favItems.concat(restItems);
+
   // if no matches found
   if(items.length === 0) {
     items.push({
       title: 'No lines available'
     });
   }
-
+  console.log('lines parsed: ' + JSON.stringify(items,null,2));
   // Finally return whole array
   return items;
 };
@@ -92,7 +120,7 @@ function locationSuccess(pos) {
     }
   },
   function(data) {
-//     console.debug(JSON.stringify(data,null,2));
+//      console.debug(JSON.stringify(data,null,2));
     console.info('Got a list of nearby stations');
     
     // Create an array of Menu items
@@ -169,25 +197,32 @@ function displayText(text, previousWindow, isVibe) {
 }
 
 // TODO: I should translate all names synchronously
-function translate(text) {
-  console.debug('translating: ' + text);
-  var trans = null;
-  ajax(
-    {
-      url: 'https://www.googleapis.com/language/translate/v2?key=xxx&source=he&target=en&q='+text,
-      type: 'json',
-      async: false,
-      cache: true
-    },
-    function(data) {
-//       console.debug(JSON.stringify(data,null,2));
-      trans = data.data.translations[0].translatedText;
-    },
-    function(err) {
-      console.error('Error translating (' + err.code + '): ' + err.message);
-      return null;
-    });
-  console.debug('translate returns: ' + trans);
+function translate(key, text) {
+  console.debug('translating id ' + key + ', text: ' + text);
+  var trans = cache[key];
+  if (trans) {
+    console.debug('transltated from cache: ' + trans);
+  } else {
+    //TODO split the text by "/". translate each part seperately and concat the results adding the "/" again.
+    ajax(
+      {
+        url: 'https://www.googleapis.com/language/translate/v2?key=AIzaSyCR7hNILxOpodBmJ5I0EDOD_zyoEWfBEeE&source=he&target=en&q='+text,
+        type: 'json',
+        async: false,
+        cache: true
+      },
+      function(data) {
+  //       console.debug(JSON.stringify(data,null,2));
+        trans = data.data.translations[0].translatedText;
+        console.debug('translated using google: ' + trans);
+        cache[key] = trans;
+        isCacheUpdated = true;
+      },
+      function(err) {
+        console.error('Error translating (' + err.code + '): ' + err.message);
+        return null;
+      });
+  }
   return trans;
 }
 
@@ -221,9 +256,22 @@ function displayLinesInStation(selectedItem) {
       }]
     });
     
-    // Add an action for SELECT
-    resultsMenu.on('select', function(e){
-      console.debug('Selected bus item ' + e.selectedIndex);
+    // When long selecting a line, toggle favoriting it
+    resultsMenu.on('longSelect', function(e){
+      var lines = Settings.option('lines') ? JSON.parse(Settings.option('lines')) : [];
+      console.log('Current favorite lines: ' + JSON.stringify(lines));
+      var index = lines.indexOf(e.item.id);
+      if(index > -1) {
+        // removing line from favorites
+        lines.splice(index, 1);
+        console.debug('Removing line ' + e.item.id + ' from favorites: ' + JSON.stringify(lines));
+      } else {
+        // adding line to favorites
+        lines.push(e.item.id);
+        console.debug('Adding line ' + e.item.id + ' to favorites: ' + JSON.stringify(lines));
+      }
+      Settings.option('lines', JSON.stringify(lines));
+      Vibe.vibrate('short');
     });
     
     // Show the Menu
@@ -238,21 +286,21 @@ function displayLinesInStation(selectedItem) {
 // STTINGS
 // Should move to a seperate file once supported by pebble
 //==========================
+// TODO this is commented out as I dont have a way to initialize the webview with the current content of setting
 // Set a configurable with the open callback
-Settings.config(
-  { url: 'http://www.example.com',
-    autoSave: true },
-  function(e) {
-    console.debug('opening configurable');
-
-    // Reset color to red before opening the webview
-    Settings.option('color', 'red');
-    Settings.option('stations', '4');
-    Settings.option('lines', ['1','40','51','68','240']);
-  },
-  function(e) {
-    console.debug('closed configurable');
-    var stations = Settings.option('stations');
-    console.debug('number of stations: ' + stations);
-  }
-);
+// Settings.config(
+//   { url: 'http://pebble-config.herokuapp.com/config?title=Commuter&fields=Lines,Stations',
+//     autoSave: true },
+//   function(e) {
+//     // This is called when config web page is open
+//     console.debug('opening configurable');
+//   },
+//   function(e) {
+//     // This is called when config page is closed
+//     console.debug('closed configurable');
+//     console.log('Back from config page: ' + e.response);
+//     var res = JSON.parse(e.response);
+//     Settings.option('stations', res.Stations);
+//     Settings.option('lines', res.Lines);
+//   }
+// );
