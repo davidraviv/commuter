@@ -206,7 +206,7 @@ function translate(key, text) {
     //TODO split the text by "/". translate each part seperately and concat the results adding the "/" again.
     ajax(
       {
-        url: 'https://www.googleapis.com/language/translate/v2?key=AIzaSyCh_FQm5rTOTPNnFGCB5rwrIeTg0pj8h-M&source=he&target=en&q='+text,
+        url: 'https://www.googleapis.com/language/translate/v2?key=XXX&source=he&target=en&q='+text,
         type: 'json',
         async: false,
         cache: true
