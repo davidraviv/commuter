@@ -55,8 +55,8 @@ var parseFeed = function(data) {
 var parseLines = function(data) {
   var favItems = [];
   var restItems = [];
-  var favoriteLines = Settings.option('lines') ? JSON.parse(Settings.option('lines')) : []; // || ['1','40','51','68','240'];
-  console.log('favorite lines: ' + JSON.stringify(favoriteLines));
+  var favoriteLines = Settings.option('lines') ? JSON.parse(Settings.option('lines')) : [];
+//   console.log('favorite lines: ' + JSON.stringify(favoriteLines));
   // make sure objects are valid and iterate over all bus lines
   if (data.Payload && data.Payload.Lines) {
     for(var i = 0; i < data.Payload.Lines.length; i++) {
@@ -82,7 +82,7 @@ var parseLines = function(data) {
       title: 'No lines available'
     });
   }
-  console.log('lines parsed: ' + JSON.stringify(items,null,2));
+//   console.log('lines parsed: ' + JSON.stringify(items,null,2));
   // Finally return whole array
   return items;
 };
@@ -91,8 +91,8 @@ currentWindow = displayText('Getting location...', currentWindow, false);
 
 var locationOptions = {
   enableHighAccuracy: true,
-  timeout: 5000,
-  maximumAge: 0
+  timeout: 10000,
+  maximumAge: 1000 * 60 // 1 minute
 };
 
 function locationSuccess(pos) {
@@ -100,8 +100,8 @@ function locationSuccess(pos) {
   console.debug('Lat: ' + crd.latitude + 'Lon:' + crd.longitude + 'Accuracy: ' + crd.accuracy);
 // Text element to show position
   currentWindow = displayText(
-    'lat: ' + crd.latitude + '\n' +
-    'lon: ' + crd.longitude + '\n' +
+//     'lat: ' + crd.latitude + '\n' +
+//     'lon: ' + crd.longitude + '\n' +
     'accuracy: ' + crd.accuracy, 
     currentWindow, false);
   
@@ -206,7 +206,7 @@ function translate(key, text) {
     //TODO split the text by "/". translate each part seperately and concat the results adding the "/" again.
     ajax(
       {
-        url: 'https://www.googleapis.com/language/translate/v2?key=AIzaSyCR7hNILxOpodBmJ5I0EDOD_zyoEWfBEeE&source=he&target=en&q='+text,
+        url: 'https://www.googleapis.com/language/translate/v2?key=AIzaSyCh_FQm5rTOTPNnFGCB5rwrIeTg0pj8h-M&source=he&target=en&q='+text,
         type: 'json',
         async: false,
         cache: true
